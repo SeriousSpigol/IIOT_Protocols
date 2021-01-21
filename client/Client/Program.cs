@@ -1,48 +1,68 @@
 ﻿using System;
-using System.Collections.Generic;
+using RabbitMQ.Client;
+using System.Text;
 using Client.Sensors;
-using System.Net;
-using System.IO;
-using System.Collections;
+using System.Collections.Generic;
 
 namespace Client
 {
-    class Program
+    class Send
     {
-        static void Main(string[] args)
+        public static void Main()
         {
+            var sensors = new VirtualSensors();
+            var factory = new ConnectionFactory() { Uri = new Uri ("amqps://bzsuiemn:suzKkZg1O5lH71TFtuBjtBxret2cp6oY@bonobo.rmq.cloudamqp.com/bzsuiemn") };
 
-            // init sensors
-            List<SensorInterface> sensors = new List<SensorInterface>();
-            sensors.Add(new VirtualSpeedSensor());
-
-            while (true)
+            using (var connection = factory.CreateConnection())
+            using (var channel = connection.CreateModel())
             {
-                foreach (SensorInterface sensor in sensors)
-                {
-                    HttpWebRequest httpWebRequest = (HttpWebRequest)WebRequest.Create("http://localhost:8011/scooters/123");
-                    httpWebRequest.ContentType = "text/json";
-                    httpWebRequest.Method = "POST";
+                channel.QueueDeclare(queue: "CantonQueue",
+                                     durable: true,
+                                     exclusive: false,
+                                     autoDelete: false,
+                                     arguments: null);
 
-                    using (var streamWriter = new StreamWriter(httpWebRequest.GetRequestStream()))
-                    {
-                        streamWriter.Write(sensor.toJson());
-                    }
+                while (true) {
 
-                    var httpResponse = (HttpWebResponse)httpWebRequest.GetResponse();
+                    Random random = new Random();
+                    var id = random.Next(1, 100);
+                    var batterydata = sensors.GetBattery();
+                    var speeddata = sensors.GetSpeed();
+                    var positiondata = sensors.GetLatLong();
 
-                    Console.Out.WriteLine(httpResponse.StatusCode);
+                    //string message = speeddata;
+                    //var body = Encoding.UTF8.GetBytes(message);
+                    var battery = Encoding.UTF8.GetBytes(batterydata);
+                    var speed = Encoding.UTF8.GetBytes(speeddata);
+                    var position = Encoding.UTF8.GetBytes(positiondata);
 
-                    httpResponse.Close();
+                    channel.BasicPublish(exchange: "ExchangeCanton",
+                                        routingKey: "Scooters." + id + ".Speed",
+                                        basicProperties: null,
+                                        body: speed);
 
-                    System.Threading.Thread.Sleep(1000);
+                    channel.BasicPublish(exchange: "ExchangeCanton",
+                                        routingKey: "Scooters." + id + ".Battery",
+                                        basicProperties: null,
+                                        body: battery);
 
+                    channel.BasicPublish(exchange: "ExchangeCanton",
+                                        routingKey: "Scooters." + id + ".Position",
+                                        basicProperties: null,
+                                        body: position);
+
+                    Console.WriteLine(" [eScooter" + id + "] Sent Speed: " + speeddata + ", Battery: " + batterydata + ", Position: " + positiondata);
+                    Console.WriteLine(" Press [enter] to exit.");
+
+                    var key = Console.ReadKey();
+
+                    if (key.Key == ConsoleKey.Enter) 
+                        break;
                 }
-
+                
             }
 
+            
         }
-
     }
-
 }
